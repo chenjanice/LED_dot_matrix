@@ -14,6 +14,7 @@
 Freenove_ESP32_WS2812 strip = Freenove_ESP32_WS2812(LEDS_COUNT, LEDS_PIN, CHANNEL);
 WiFiManager wm; 
 ESP32Time rtc; 
+SemaphoreHandle_t xMutex;
 
 int number0[5][3] = {{1,1,1},{1,0,1},{1,0,1},{1,0,1},{1,1,1}};
 int number1[5][3] = {{0,1,0},{0,1,0},{0,1,0},{0,1,0},{0,1,0}};
@@ -198,23 +199,33 @@ void doWiFiManager(){
 }
 
 void updateIconTask(void *parameter) {
-  for(;;) { 
-    eraseIcon(29, 1, icon_idx);
-    icon_idx = (icon_idx + 1) % 5;
-    drawIcon(29, 1, icon_idx, true, icon_r, icon_g, icon_b);
-    strip.show();
+  for(;;) {
+    if(xSemaphoreTake(xMutex, (TickType_t)3000) == pdTRUE) {
+      eraseIcon(29, 1, icon_idx);
+      icon_idx = (icon_idx + 1) % 5;
+      drawIcon(29, 1, icon_idx, true, icon_r, icon_g, icon_b);
+      strip.show();
+      xSemaphoreGive(xMutex);
+    }else{
+      Serial.println("Can not take the mutex");
+    }
     vTaskDelay(pdMS_TO_TICKS(500)); 
   }
 }
 
 void updateTimeDisplayTask(void *parameter) {
   for(;;) { 
-    convertTimeToArray(timeArray);
-    eraseTime(1, 2);
-    drawTime(1, 2, true, time_r, time_g, time_b);
-    drawPoint(9, 3, true, point_r, point_g, point_b);
-    strip.show();
-    vTaskDelay(pdMS_TO_TICKS(1000)); 
+    if(xSemaphoreTake(xMutex, (TickType_t)3000) == pdTRUE) {
+      convertTimeToArray(timeArray);
+      eraseTime(1, 2);
+      drawTime(1, 2, true, time_r, time_g, time_b);
+      drawPoint(9, 3, true, point_r, point_g, point_b);
+      strip.show();
+      xSemaphoreGive(xMutex);
+    }else{
+      Serial.println("Can not take the mutex");
+    }
+    vTaskDelay(pdMS_TO_TICKS(1000));
   }
 }
 
@@ -252,18 +263,19 @@ void setup() {
   // Draw
   strip.begin();
 
+  
+
   // Multi-Task
-  delay(10);
+  xMutex = xSemaphoreCreateMutex();
+  if (xMutex == NULL) {
+      Serial.println("Mutex can not be created");
+  }
   xTaskCreate(updateIconTask, "Update Icon", 2048, NULL, 2, NULL);
-  delay(10);
   xTaskCreate(updateTimeDisplayTask, "Update Time", 2048, NULL, 3, NULL);
-  delay(10);
   xTaskCreate(syncTimeTask, "Sync Time", 2048, NULL, 1, NULL);
-  delay(10);
 }
 
 
 void loop() {
   doWiFiManager();
-  delay(10);
 }
