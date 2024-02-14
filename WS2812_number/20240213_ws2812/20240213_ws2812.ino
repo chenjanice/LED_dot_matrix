@@ -5,6 +5,7 @@
 #include <WiFiManager.h> 
 #include <ESPmDNS.h> 
 #include <ESP32Time.h>
+//#include <Arduino.h>
 
 #define LEDS_COUNT  320
 #define LEDS_PIN  27
@@ -36,7 +37,11 @@ int icon_idx = 0;
 int timeArray[6];
 int (*numbers[10])[3] = {number0, number1, number2, number3, number4, number5, number6, number7, number8, number9};
 int (*icons[7])[7] = {icon0, icon1, icon2, icon3, icon4};
+int time_r = 60; int time_g = 20; int time_b = 5;
+int point_r = 60; int point_g = 20; int point_b = 0;
+int icon_r = 60; int icon_g = 20; int icon_b = 0;
 
+  
 unsigned int  timeout   = 5; // 設定門戶運行的超時時間為5秒
 unsigned int  startTime = millis(); // 記錄程序啟動的起始時間
 bool portalRunning      = false; // 追踪配置門戶是否正在運行
@@ -157,7 +162,7 @@ void convertTimeToArray(int* timeArray)
   timeArray[3] = rtc.getMinute() % 10;
   timeArray[4] = rtc.getSecond() / 10;
   timeArray[5] = rtc.getSecond() % 10;
-  Serial.printf("timeArrayt=%d%d:%d%d:%d%d",timeArray[0],timeArray[1],timeArray[2],timeArray[3],timeArray[4],timeArray[5] );
+  Serial.printf("timeArrayt=%d%d:%d%d:%d%d\n",timeArray[0],timeArray[1],timeArray[2],timeArray[3],timeArray[4],timeArray[5] );
 }
 
 void doWiFiManager(){
@@ -193,6 +198,36 @@ void doWiFiManager(){
   }
 }
 
+void updateIconTask(void *parameter) {
+  for(;;) { 
+    eraseIcon(29, 1, icon_idx);
+    icon_idx = (icon_idx + 1) % 5;
+    drawIcon(29, 1, icon_idx, true, icon_r, icon_g, icon_b);
+    strip.show();
+    vTaskDelay(pdMS_TO_TICKS(500)); 
+  }
+}
+
+void updateTimeDisplayTask(void *parameter) {
+  for(;;) { 
+    convertTimeToArray(timeArray);
+    eraseTime(1, 2);
+    drawTime(1, 2, true, time_r, time_g, time_b);
+    drawPoint(9, 3, true, point_r, point_g, point_b);
+    strip.show();
+    vTaskDelay(pdMS_TO_TICKS(1000)); 
+  }
+}
+
+void syncTimeTask(void *parameter) {
+  struct tm timeinfo;
+  for(;;) { 
+    if(getLocalTime(&timeinfo)) {
+      rtc.setTimeStruct(timeinfo);
+    }
+    vTaskDelay(pdMS_TO_TICKS(1000 * 60 * 60 * 12)); 
+  }
+}
 
 void setup() {
   // Setting
@@ -217,41 +252,17 @@ void setup() {
 
   // Draw
   strip.begin();
+
+  // Multi-Task
+  xTaskCreate(updateIconTask, "Update Icon", 2048, NULL, 2, NULL);
+  delay(10);
+  xTaskCreate(updateTimeDisplayTask, "Update Time", 2048, NULL, 3, NULL);
+  delay(10);
+  xTaskCreate(syncTimeTask, "Sync Time", 2048, NULL, 1, NULL);
+  delay(10);
 }
 
 
 void loop() {
-  doWiFiManager(); 
-  int time_r = 60; int time_g = 20; int time_b = 5;
-  int point_r = 60; int point_g = 20; int point_b = 0;
-  int icon_r = 60; int icon_g = 20; int icon_b = 0;
-  long startTimeStamp = millis();
-
-  while(1){
-
-    long timeDifference = millis() - startTimeStamp;
-    if(timeDifference % 500 == 0) {
-      eraseIcon(29, 1, icon_idx);
-      icon_idx = (icon_idx + 1) % 5;
-      drawIcon(29, 1, icon_idx, true, icon_r, icon_g, icon_b);
-      strip.show();
-      delay(10);
-    }
-    if(timeDifference % 1000 == 0) {
-      convertTimeToArray(timeArray);
-      eraseTime(1, 2);
-      drawTime(1, 2, true, time_r, time_g, time_b);
-      drawPoint(9, 3, true, point_r, point_g, point_b);
-      strip.show();
-      delay(10); 
-    }
-    if(timeDifference % 432000000 == 0) {
-      Serial.printf("Get New Time From NTP server\n");
-      struct tm timeinfo;
-      if (getLocalTime(&timeinfo)){
-         rtc.setTimeStruct(timeinfo);
-      }
-    }
-    
-  }
+  doWiFiManager();
 }
