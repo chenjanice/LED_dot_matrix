@@ -5,7 +5,6 @@
 #include <WiFiManager.h> 
 #include <ESPmDNS.h> 
 #include <ESP32Time.h>
-//#include <Arduino.h>
 
 #define LEDS_COUNT  320
 #define LEDS_PIN  27
@@ -254,6 +253,7 @@ void setup() {
   strip.begin();
 
   // Multi-Task
+  delay(10);
   xTaskCreate(updateIconTask, "Update Icon", 2048, NULL, 2, NULL);
   delay(10);
   xTaskCreate(updateTimeDisplayTask, "Update Time", 2048, NULL, 3, NULL);
@@ -265,4 +265,5 @@ void setup() {
 
 void loop() {
   doWiFiManager();
+  delay(10);
 }
