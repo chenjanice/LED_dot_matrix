@@ -157,6 +157,7 @@ void convertTimeToArray(int* timeArray)
   timeArray[3] = rtc.getMinute() % 10;
   timeArray[4] = rtc.getSecond() / 10;
   timeArray[5] = rtc.getSecond() % 10;
+  Serial.printf("timeArrayt=%d%d:%d%d:%d%d",timeArray[0],timeArray[1],timeArray[2],timeArray[3],timeArray[4],timeArray[5] );
 }
 
 void doWiFiManager(){
@@ -229,6 +230,13 @@ void loop() {
   while(1){
 
     long timeDifference = millis() - startTimeStamp;
+    if(timeDifference % 500 == 0) {
+      eraseIcon(29, 1, icon_idx);
+      icon_idx = (icon_idx + 1) % 5;
+      drawIcon(29, 1, icon_idx, true, icon_r, icon_g, icon_b);
+      strip.show();
+      delay(10);
+    }
     if(timeDifference % 1000 == 0) {
       convertTimeToArray(timeArray);
       eraseTime(1, 2);
@@ -237,12 +245,13 @@ void loop() {
       strip.show();
       delay(10); 
     }
-    if(timeDifference % 500 == 0) {
-      eraseIcon(29, 1, icon_idx);
-      icon_idx = (icon_idx + 1) % 5;
-      drawIcon(29, 1, icon_idx, true, icon_r, icon_g, icon_b);
-      strip.show();
-      delay(10);
-    }  
+    if(timeDifference % 432000000 == 0) {
+      Serial.printf("Get New Time From NTP server\n");
+      struct tm timeinfo;
+      if (getLocalTime(&timeinfo)){
+         rtc.setTimeStruct(timeinfo);
+      }
+    }
+    
   }
 }
