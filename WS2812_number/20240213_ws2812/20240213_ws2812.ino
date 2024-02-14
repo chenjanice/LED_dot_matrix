@@ -4,6 +4,7 @@
 #include <time.h>
 #include <WiFiManager.h> // 引入WiFiManager庫，用於管理WiFi連接
 #include <ESPmDNS.h> // 引入ESP32的mDNS庫，用於本地名稱解析
+#include <ESP32Time.h>
 
 #define LEDS_COUNT  320
 #define LEDS_PIN  27
@@ -12,6 +13,7 @@
 
 Freenove_ESP32_WS2812 strip = Freenove_ESP32_WS2812(LEDS_COUNT, LEDS_PIN, CHANNEL);
 WiFiManager wm; // 創建WiFiManager類的實例
+ESP32Time rtc; // ESP32 Real-time clock
 
 unsigned int  timeout   = 5; // 設定門戶運行的超時時間為5秒
 unsigned int  startTime = millis(); // 記錄程序啟動的起始時間
@@ -44,12 +46,6 @@ const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 8*60*60;
 const int   daylightOffset_sec = 0;
 
-struct TimeInfo {
-  int hour;
-  int minute;
-  int second;
-};
-
 
 int get_index(int x, int y) {
     int led_index;
@@ -72,7 +68,7 @@ void setLedColors(int origin_x, int origin_y, int (*numberArray)[3],bool isLedOn
       for (int col = 0; col < 3; col++) {
         int led_x = origin_x+col;
         int led_y = origin_y+row;
-//        Serial.printf("origin_x=%d, col=%d, led_x=%d\n",origin_x,col,led_x );
+        //Serial.printf("origin_x=%d, col=%d, led_x=%d\n",origin_x,col,led_x );
         
         if (numberArray[row][col] == 1){
           if (isLedOn == true){
@@ -91,7 +87,8 @@ void setLedColorsIcon(int origin_x, int origin_y, int (*numberArray)[7],bool isL
       for (int col = 0; col < 7; col++) {
         int led_x = origin_x+col;
         int led_y = origin_y+row;
-//        Serial.printf("origin_x=%d, col=%d, led_x=%d\n",origin_x,col,led_x );
+//        ///////  
+        //Serial.printf("origin_x=%d, col=%d, led_x=%d\n",origin_x,col,led_x );
         if (numberArray[row][col] == 1){
           if (isLedOn == true){
             strip.setLedColorData(get_index(led_x, led_y), r, g, b); 
@@ -111,37 +108,16 @@ void setLedColorsPoint(int led_x, int led_y,bool isLedOn, int r, int g, int b) {
     }
 }
 
-TimeInfo getLocalTime()
+void convertTimeToArray(int* timeArray) 
 {
-  struct tm timeinfo;
-  if(!getLocalTime(&timeinfo)){
-    Serial.println("Failed to obtain time");
-    return TimeInfo{-1, -1, -1}; 
-  }
-  mktime(&timeinfo); // 正規化時間結構
+  // get each digits of HMS
+  timeArray[0] = rtc.getHour(true)/10;
+  timeArray[1] = rtc.getHour(true) % 10;
+  timeArray[2] = rtc.getMinute() / 10;
+  timeArray[3] = rtc.getMinute() % 10;
+  timeArray[4] = rtc.getSecond() / 10;
+  timeArray[5] = rtc.getSecond() % 10;
 
-  TimeInfo result;
-  result.hour = timeinfo.tm_hour;
-  result.minute = timeinfo.tm_min;
-  result.second = timeinfo.tm_sec;
-  return result;
-}
-
-void convertTimeToArray(TimeInfo currentTime, int* timeArray) {
-    if (currentTime.hour != -1) {
-        // 分解小時、分鐘和秒，並將每一位數字存儲到陣列中
-        timeArray[0] = currentTime.hour / 10;
-        timeArray[1] = currentTime.hour % 10;
-        timeArray[2] = currentTime.minute / 10;
-        timeArray[3] = currentTime.minute % 10;
-        timeArray[4] = currentTime.second / 10;
-        timeArray[5] = currentTime.second % 10;
-    } else {
-        // 如果獲取時間失敗，設置所有陣列元素為 -1
-        for(int i = 0; i < 6; i++) {
-            timeArray[i] = -1;
-        }
-    }
 }
 
 void doWiFiManager(){
@@ -150,7 +126,7 @@ void doWiFiManager(){
 
     // 檢查門戶是否超過了超時時間
     if((millis()-startTime) > (timeout*1000)){
-      Serial.println("portaltimeout"); // 在串行監視器中打印超時消息
+      Serial.println("portaltimeout");
       portalRunning = false; // 指示門戶不再運行
       if(startAP){
         wm.stopConfigPortal(); // 如果啟動了配置門戶，則停止配置門戶
@@ -179,20 +155,30 @@ void doWiFiManager(){
 
 
 void setup() {
+  // Setting
   int point_r = 60; int point_g = 20; int point_b = 0;
-  
-  WiFi.mode(WIFI_STA); // 將WiFi模式設定為STA(站點)，以連接到路由器
-
-  strip.begin();
-  Serial.begin(115200);
-  Serial.setDebugOutput(true); // 啟用詳細的調試輸出在串行監視器中
-  Serial.println("\n Starting");
-
   pinMode(TRIGGER_PIN, INPUT_PULLUP); // 將觸發引腳設置為輸入模式並啟用上拉電阻
+  
+  // Serial
+  Serial.begin(115200);
+  Serial.setDebugOutput(true);
+  Serial.println("\n Starting");
+  
+  // WiFi
+  WiFi.mode(WIFI_STA); // 將WiFi模式設定為STA(站點)，以連接到路由器
   wm.setHostname("MDNSEXAMPLE"); // 為mDNS回應器設置主機名
   wm.autoConnect(); // 自動嘗試連接到之前保存的WiFi網絡
+
+  // Time
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-  
+  struct tm timeinfo;
+  if (getLocalTime(&timeinfo))
+  {
+    rtc.setTimeStruct(timeinfo);
+  }
+
+  // Draw
+  strip.begin();
   setLedColorsPoint(9,3,true,point_r, point_g, point_b);
   setLedColorsPoint(9,5,true,point_r, point_g, point_b);
   setLedColorsPoint(19,3,true,point_r, point_g, point_b);
@@ -205,17 +191,13 @@ void loop() {
   int time_r = 60; int time_g = 20; int time_b = 5;
   int icon_r = 60; int icon_g = 20; int icon_b = 0;
   long startTimeStamp = millis();
-  TimeInfo currentTime = getLocalTime();
-  convertTimeToArray(currentTime, timeArray); // 將時間轉換為數字陣列
-  if (icon_idx < 4){
-      icon_idx += 1;
-    }else{
-      icon_idx = 0;
-    }
+
+  convertTimeToArray(timeArray);
   while(1){
 
     long timeDifference = millis() - startTimeStamp;
     if(timeDifference % 1000 == 0) {
+      
       setLedColors(1, 2, numbers[timeArray[0]],false, time_r, time_g, time_b); 
       setLedColors(5, 2, numbers[timeArray[1]],false, time_r, time_g, time_b); 
       setLedColors(11, 2, numbers[timeArray[2]],false, time_r, time_g, time_b); 
@@ -223,8 +205,7 @@ void loop() {
       setLedColors(21, 2, numbers[timeArray[4]],false, time_r, time_g, time_b); 
       setLedColors(25, 2, numbers[timeArray[5]],false, time_r, time_g, time_b);
       
-      TimeInfo currentTime = getLocalTime();
-      convertTimeToArray(currentTime, timeArray); // 將時間轉換為數字陣列
+      convertTimeToArray(timeArray);
       
       setLedColors(1, 2, numbers[timeArray[0]],true, time_r, time_g, time_b); 
       setLedColors(5, 2, numbers[timeArray[1]],true, time_r, time_g, time_b); 
@@ -237,11 +218,7 @@ void loop() {
     }
     if(timeDifference % 500 == 0) {
       setLedColorsIcon(29+icon_idx, 1, icons[icon_idx],false, icon_r, icon_g, icon_b);
-      if (icon_idx < 4){
-        icon_idx += 1;
-      }else{
-        icon_idx = 0;
-      }
+      icon_idx = (icon_idx + 1) % 5;
       setLedColorsIcon(29+icon_idx, 1, icons[icon_idx],true, icon_r, icon_g, icon_b);
       strip.show();
       delay(10);
