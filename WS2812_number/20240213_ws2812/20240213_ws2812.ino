@@ -205,6 +205,7 @@ void updateIconTask(void *parameter) {
       icon_idx = (icon_idx + 1) % 5;
       drawIcon(29, 1, icon_idx, true, icon_r, icon_g, icon_b);
       strip.show();
+      vTaskDelay(pdMS_TO_TICKS(10)); 
       xSemaphoreGive(xMutex);
     }else{
       Serial.println("Can not take the mutex");
@@ -221,11 +222,13 @@ void updateTimeDisplayTask(void *parameter) {
       drawTime(1, 2, true, time_r, time_g, time_b);
       drawPoint(9, 3, true, point_r, point_g, point_b);
       strip.show();
+      vTaskDelay(pdMS_TO_TICKS(10));
       xSemaphoreGive(xMutex);
     }else{
       Serial.println("Can not take the mutex");
     }
     vTaskDelay(pdMS_TO_TICKS(1000));
+    
   }
 }
 
