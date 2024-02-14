@@ -2,23 +2,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include <WiFiManager.h> // 引入WiFiManager庫，用於管理WiFi連接
-#include <ESPmDNS.h> // 引入ESP32的mDNS庫，用於本地名稱解析
+#include <WiFiManager.h> 
+#include <ESPmDNS.h> 
 #include <ESP32Time.h>
 
 #define LEDS_COUNT  320
 #define LEDS_PIN  27
 #define CHANNEL   1
-#define TRIGGER_PIN 15 // 定義用於觸發配置門戶的GPIO引腳號
+#define TRIGGER_PIN 15 
 
 Freenove_ESP32_WS2812 strip = Freenove_ESP32_WS2812(LEDS_COUNT, LEDS_PIN, CHANNEL);
-WiFiManager wm; // 創建WiFiManager類的實例
-ESP32Time rtc; // ESP32 Real-time clock
-
-unsigned int  timeout   = 5; // 設定門戶運行的超時時間為5秒
-unsigned int  startTime = millis(); // 記錄程序啟動的起始時間
-bool portalRunning      = false; // 標誌位，追踪配置門戶是否正在運行
-bool startAP            = true; // 標誌位，用於決定是啟動AP+網頁伺服器(true)還是僅啟動網頁伺服器(false)
+WiFiManager wm; 
+ESP32Time rtc; 
 
 int number0[5][3] = {{1,1,1},{1,0,1},{1,0,1},{1,0,1},{1,1,1}};
 int number1[5][3] = {{0,1,0},{0,1,0},{0,1,0},{0,1,0},{0,1,0}};
@@ -42,6 +37,10 @@ int timeArray[6];
 int (*numbers[10])[3] = {number0, number1, number2, number3, number4, number5, number6, number7, number8, number9};
 int (*icons[7])[7] = {icon0, icon1, icon2, icon3, icon4};
 
+unsigned int  timeout   = 5; // 設定門戶運行的超時時間為5秒
+unsigned int  startTime = millis(); // 記錄程序啟動的起始時間
+bool portalRunning      = false; // 追踪配置門戶是否正在運行
+bool startAP            = true; // 用於決定是啟動AP+網頁伺服器(true)還是僅啟動網頁伺服器(false)
 const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = 8*60*60;
 const int   daylightOffset_sec = 0;
@@ -63,7 +62,7 @@ int get_index(int x, int y) {
     return led_index;
 }
 
-void setLedColors(int origin_x, int origin_y, int (*numberArray)[3],bool isLedOn, int r, int g, int b) {
+void setLedColorsTime(int origin_x, int origin_y, int (*numberArray)[3],bool isLedOn, int r, int g, int b) {
     for (int row = 0; row < 5; row++) {
       for (int col = 0; col < 3; col++) {
         int led_x = origin_x+col;
@@ -81,6 +80,25 @@ void setLedColors(int origin_x, int origin_y, int (*numberArray)[3],bool isLedOn
     }
 }
 
+void drawTime(int x, int y, bool isLEDOn, int time_r, int time_g, int time_b)
+{
+    setLedColorsTime(x,    y, numbers[timeArray[0]],isLEDOn, time_r, time_g, time_b); 
+    setLedColorsTime(x+4,  y, numbers[timeArray[1]],isLEDOn, time_r, time_g, time_b); 
+    setLedColorsTime(x+10, y, numbers[timeArray[2]],isLEDOn, time_r, time_g, time_b); 
+    setLedColorsTime(x+14, y, numbers[timeArray[3]],isLEDOn, time_r, time_g, time_b); 
+    setLedColorsTime(x+20, y, numbers[timeArray[4]],isLEDOn, time_r, time_g, time_b); 
+    setLedColorsTime(x+24, y, numbers[timeArray[5]],isLEDOn, time_r, time_g, time_b); 
+}
+
+void eraseTime(int org_x, int org_y)
+{
+  int x;
+  int y;
+  for(y=org_y; y<org_y+7; y++)
+    for(x=org_x; x<org_x+27; x++){
+      strip.setLedColorData(get_index(x, y), 0, 0, 0);
+    }
+}
 
 void setLedColorsIcon(int origin_x, int origin_y, int (*numberArray)[7],bool isLedOn, int r, int g, int b) {
     for (int row = 0; row < 7; row++) {
@@ -100,6 +118,21 @@ void setLedColorsIcon(int origin_x, int origin_y, int (*numberArray)[7],bool isL
     }
 }
 
+void drawIcon(int x, int y, int icon_idx, bool isLEDOn, int icon_r, int icon_g, int icon_b)
+{
+  setLedColorsIcon(x+icon_idx, y, icons[icon_idx], isLEDOn, icon_r, icon_g, icon_b);
+}
+
+void eraseIcon(int org_x, int org_y, int icon_idx)
+{
+  int x;
+  int y;
+  org_x = org_x + icon_idx;
+  for(y=org_y; y < org_y+7; y++)
+    for(x=org_x; x < org_x+7; x++)
+      strip.setLedColorData(get_index(x, y), 0, 0, 0);
+}
+
 void setLedColorsPoint(int led_x, int led_y,bool isLedOn, int r, int g, int b) {
     if (isLedOn == true){
         strip.setLedColorData(get_index(led_x, led_y), r, g, b);
@@ -108,36 +141,42 @@ void setLedColorsPoint(int led_x, int led_y,bool isLedOn, int r, int g, int b) {
     }
 }
 
+void drawPoint(int x, int y, bool isLEDOn, int point_r, int point_g, int point_b)
+{
+  setLedColorsPoint(x,   y,  true,point_r, point_g, point_b);
+  setLedColorsPoint(x,   y+2,true,point_r, point_g, point_b);
+  setLedColorsPoint(x+10,y,  true,point_r, point_g, point_b);
+  setLedColorsPoint(x+10,y+2,true,point_r, point_g, point_b);
+}
+
 void convertTimeToArray(int* timeArray) 
 {
-  // get each digits of HMS
   timeArray[0] = rtc.getHour(true)/10;
   timeArray[1] = rtc.getHour(true) % 10;
   timeArray[2] = rtc.getMinute() / 10;
   timeArray[3] = rtc.getMinute() % 10;
   timeArray[4] = rtc.getSecond() / 10;
   timeArray[5] = rtc.getSecond() % 10;
-
 }
 
 void doWiFiManager(){
-  if(portalRunning){ // 如果配置門戶當前正在運行
+  if(portalRunning){ // 如果配置portal當前正在運行
     wm.process(); // 處理WiFiManager任務
 
-    // 檢查門戶是否超過了超時時間
+    // 檢查portal是否超過了超時時間
     if((millis()-startTime) > (timeout*1000)){
       Serial.println("portaltimeout");
-      portalRunning = false; // 指示門戶不再運行
+      portalRunning = false; // 指示portal不再運行
       if(startAP){
-        wm.stopConfigPortal(); // 如果啟動了配置門戶，則停止配置門戶
+        wm.stopConfigPortal(); // 如果啟動了配置portal，則停止配置portal
       }
       else{
-        wm.stopWebPortal(); // 如果啟動了網頁門戶，則停止網頁門戶
+        wm.stopWebPortal(); // 如果啟動了網頁portal，則停止網頁portal
       } 
    }
   }
 
-  // 檢查是否按下了觸發按鈕且門戶當前未運行
+  // 檢查是否按下了觸發按鈕且portal當前未運行
   if(digitalRead(TRIGGER_PIN) == LOW && (!portalRunning)) {
     if(startAP){
       Serial.println("Button Pressed, Starting Config Portal");
@@ -156,7 +195,6 @@ void doWiFiManager(){
 
 void setup() {
   // Setting
-  int point_r = 60; int point_g = 20; int point_b = 0;
   pinMode(TRIGGER_PIN, INPUT_PULLUP); // 將觸發引腳設置為輸入模式並啟用上拉電阻
   
   // Serial
@@ -172,54 +210,37 @@ void setup() {
   // Time
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
   struct tm timeinfo;
-  if (getLocalTime(&timeinfo))
-  {
-    rtc.setTimeStruct(timeinfo);
+  if (getLocalTime(&timeinfo)){
+     rtc.setTimeStruct(timeinfo);
   }
 
   // Draw
   strip.begin();
-  setLedColorsPoint(9,3,true,point_r, point_g, point_b);
-  setLedColorsPoint(9,5,true,point_r, point_g, point_b);
-  setLedColorsPoint(19,3,true,point_r, point_g, point_b);
-  setLedColorsPoint(19,5,true,point_r, point_g, point_b);
 }
 
 
 void loop() {
   doWiFiManager(); 
   int time_r = 60; int time_g = 20; int time_b = 5;
+  int point_r = 60; int point_g = 20; int point_b = 0;
   int icon_r = 60; int icon_g = 20; int icon_b = 0;
   long startTimeStamp = millis();
 
-  convertTimeToArray(timeArray);
   while(1){
 
     long timeDifference = millis() - startTimeStamp;
     if(timeDifference % 1000 == 0) {
-      
-      setLedColors(1, 2, numbers[timeArray[0]],false, time_r, time_g, time_b); 
-      setLedColors(5, 2, numbers[timeArray[1]],false, time_r, time_g, time_b); 
-      setLedColors(11, 2, numbers[timeArray[2]],false, time_r, time_g, time_b); 
-      setLedColors(15, 2, numbers[timeArray[3]],false, time_r, time_g, time_b); 
-      setLedColors(21, 2, numbers[timeArray[4]],false, time_r, time_g, time_b); 
-      setLedColors(25, 2, numbers[timeArray[5]],false, time_r, time_g, time_b);
-      
       convertTimeToArray(timeArray);
-      
-      setLedColors(1, 2, numbers[timeArray[0]],true, time_r, time_g, time_b); 
-      setLedColors(5, 2, numbers[timeArray[1]],true, time_r, time_g, time_b); 
-      setLedColors(11, 2, numbers[timeArray[2]],true, time_r, time_g, time_b); 
-      setLedColors(15, 2, numbers[timeArray[3]],true, time_r, time_g, time_b); 
-      setLedColors(21, 2, numbers[timeArray[4]],true, time_r, time_g, time_b); 
-      setLedColors(25, 2, numbers[timeArray[5]],true, time_r, time_g, time_b);
+      eraseTime(1, 2);
+      drawTime(1, 2, true, time_r, time_g, time_b);
+      drawPoint(9, 3, true, point_r, point_g, point_b);
       strip.show();
       delay(10); 
     }
     if(timeDifference % 500 == 0) {
-      setLedColorsIcon(29+icon_idx, 1, icons[icon_idx],false, icon_r, icon_g, icon_b);
+      eraseIcon(29, 1, icon_idx);
       icon_idx = (icon_idx + 1) % 5;
-      setLedColorsIcon(29+icon_idx, 1, icons[icon_idx],true, icon_r, icon_g, icon_b);
+      drawIcon(29, 1, icon_idx, true, icon_r, icon_g, icon_b);
       strip.show();
       delay(10);
     }  
